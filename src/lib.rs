@@ -41,82 +41,27 @@ impl Plugin for OneBot {
     fn load(ctx: Context<Self>) -> Result<()> {
         let ctx_ = ctx.clone();
         thread::spawn(move || loop {
-            let message = ctx_.socket.lock()?.read();
             let result: Result<()> = try {
+                let message = ctx_.socket.lock()?.read();
                 match message {
                     Ok(message) if message.is_text() => {
                         let value = serde_json::from_str::<OneEvent>(message.to_text()?)?;
                         match value {
                             OneEvent {
-                                post_type:
-                                    OneType::Message {
-                                        content:
-                                            OneMessageType::Private {
-                                                sub_type,
-                                                message_id,
-                                                user_id,
-                                                message,
-                                                raw_message,
-                                                font,
-                                                sender,
-                                            },
-                                    },
-                                self_id,
-                                time,
+                                post_type: OneType::Message { content },
                                 ..
                             } => {
-                                let channel = Channel {
-                                    id: format!("private-{}", user_id),
-                                    ty: ChannelType::Text,
-                                    name: Some(sender.nickname.clone()),
-                                    parent_id: None,
-                                };
-                                let user = User {
-                                    id: sender.user_id.to_string(),
-                                    name: Some(sender.nickname.clone()),
-                                    nick: Some(sender.nickname.clone()),
-                                    avatar: None,
-                                    is_bot: None,
-                                };
-                                let member = GuildMember {
-                                    user: Some(user.clone()),
-                                    nick: Some(sender.nickname.clone()),
-                                    avatar: None,
-                                    joined_at: None,
-                                };
-                                ctx_.global.publish(SEvent {
-                                    from_adapter: *ctx_
+                                let sevent = content.try_into_sevent(&value)?;
+                                let sevent = SEvent {
+                                    content: sevent,
+                                    from_adapter: *(ctx_
                                         .self_id
                                         .get()
-                                        .ok_or(anyhow!("适配器未初始化"))?,
-                                    content: SEventContent {
-                                        id: message_id as u64,
-                                        ty: SEventType::MessageCreated,
-                                        platfrom: "onebot11".to_string(),
-                                        self_id: self_id.to_string(),
-                                        timestamp: time as u128,
-                                        argv: None,
-                                        button: None,
-                                        channel: Some(channel.clone()),
-                                        guild: None,
-                                        login: None,
-                                        member: Some(member.clone()),
-                                        message: Some(Message {
-                                            id: message_id.to_string(),
-                                            content: raw_message,
-                                            channel: Some(channel),
-                                            guild: None,
-                                            member: Some(member),
-                                            user: Some(user.clone()),
-                                            created_at: Some(time),
-                                            updated_at: None,
-                                        }),
-                                        operator: Some(user.clone()),
-                                        role: None,
-                                        user: Some(user),
-                                    },
-                                })
-                            },
+                                        .ok_or(anyhow!("适配器未初始化"))?),
+                                };
+                                ctx_.global.publish(sevent)?;
+                                Ok(())
+                            }
                             _ => Ok(()),
                         }?
                     }
@@ -129,7 +74,9 @@ impl Plugin for OneBot {
             }
         });
         let id = add_adapter(&ctx, (&*ctx).clone());
-        ctx.self_id.set(id).map_err(|err| anyhow!("适配器已存在 ID: {}", err))?;
+        ctx.self_id
+            .set(id)
+            .map_err(|err| anyhow!("适配器已存在 ID: {}", err))?;
         info!("OneBot11 适配器加载成功: {}", id);
         Ok(())
     }
