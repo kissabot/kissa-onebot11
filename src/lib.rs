@@ -46,33 +46,33 @@ impl Plugin for OneBot {
                     .socket
                     .lock()
                     .map_err(|_| anyhow!("获取 socket 失败"))?
-                    .read();
-                match message {
-                    Ok(message) if message.is_text() => {
-                        let value = serde_json::from_str::<OneEvent>(message.to_text()?)?;
-                        match value {
-                            OneEvent {
-                                post_type: OneType::Message { content },
-                                self_id,
-                                time,
-                            } => {
-                                let sevent = content.try_into_sevent(time, self_id)?;
-                                let sevent = SEvent {
-                                    content: sevent,
-                                    from_adapter: *(ctx_
-                                        .self_id
-                                        .get()
-                                        .ok_or(anyhow!("适配器未初始化"))?),
-                                };
-                                ctx_.global.publish(sevent)?;
-                                result::Ok(())
-                            }
-                            _ => Ok(()),
-                        }?
-                    }
-                    Ok(message) => {}
-                    Err(err) => error!("读取消息出错: {}", err),
+                    .read()?;
+                if message.is_close() {
+                    info!("OneBot11 连接已关闭");
+                    break;
                 }
+                let message = if !message.is_text() {
+                    Err(anyhow!("未知消息类型"))
+                } else {
+                    let value = serde_json::from_str::<OneEvent>(message.to_text()?)?;
+                    Ok(value)
+                }?;
+                match message {
+                    OneEvent {
+                        post_type: OneType::Message { content },
+                        self_id,
+                        time,
+                    } => {
+                        let sevent = content.try_into_sevent(time, self_id)?;
+                        let sevent = SEvent {
+                            content: sevent,
+                            from_adapter: *(ctx_.self_id.get().ok_or(anyhow!("适配器未初始化"))?),
+                        };
+                        ctx_.global.publish(sevent)?;
+                        result::Ok(())
+                    }
+                    _ => Err(anyhow!("未知消息类型")),
+                }?;
             };
             if let Err(err) = result {
                 error!("转换事件错误: {}", err)
