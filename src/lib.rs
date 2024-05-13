@@ -9,7 +9,7 @@ use event::*;
 use kissabot::api::*;
 use kissabot::event::*;
 use kissabot::resources::*;
-use kissabot::topic::kokoro::result::anyhow;
+use kissabot::topic::kokoro::result::{self, anyhow};
 use kissabot::topic::{adapter::Adapter, prelude::*};
 use serde::{Deserialize, Serialize};
 use tungstenite;
@@ -42,16 +42,21 @@ impl Plugin for OneBot {
         let ctx_ = ctx.clone();
         thread::spawn(move || loop {
             let result: Result<()> = try {
-                let message = ctx_.socket.lock()?.read();
+                let message = ctx_
+                    .socket
+                    .lock()
+                    .map_err(|_| anyhow!("获取 socket 失败"))?
+                    .read();
                 match message {
                     Ok(message) if message.is_text() => {
                         let value = serde_json::from_str::<OneEvent>(message.to_text()?)?;
                         match value {
                             OneEvent {
                                 post_type: OneType::Message { content },
-                                ..
+                                self_id,
+                                time,
                             } => {
-                                let sevent = content.try_into_sevent(&value)?;
+                                let sevent = content.try_into_sevent(time, self_id)?;
                                 let sevent = SEvent {
                                     content: sevent,
                                     from_adapter: *(ctx_
@@ -60,7 +65,7 @@ impl Plugin for OneBot {
                                         .ok_or(anyhow!("适配器未初始化"))?),
                                 };
                                 ctx_.global.publish(sevent)?;
-                                Ok(())
+                                result::Ok(())
                             }
                             _ => Ok(()),
                         }?

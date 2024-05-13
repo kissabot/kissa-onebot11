@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub trait IntoSEvent {
-    fn try_into_sevent(self, one_event: &OneEvent) -> Result<SEventContent>;
+    fn try_into_sevent(self, time: u64, self_id: u64) -> Result<SEventContent>;
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OneEvent {
@@ -56,7 +56,7 @@ pub enum OneMessageType {
 }
 
 impl IntoSEvent for OneMessageType {
-    fn try_into_sevent(self, one_event: &OneEvent) -> Result<SEventContent> {
+    fn try_into_sevent(self, time: u64, self_id: u64) -> Result<SEventContent> {
         match self {
             OneMessageType::Private {
                 sub_type: _,
@@ -84,8 +84,8 @@ impl IntoSEvent for OneMessageType {
                     id: message_id as u64,
                     ty: SEventType::MessageCreated,
                     platfrom: "onebot11".to_string(),
-                    self_id: one_event.self_id.to_string(),
-                    timestamp: one_event.time as u128,
+                    self_id: self_id.to_string(),
+                    timestamp: time as u128,
                     argv: None,
                     button: None,
                     channel: Some(channel.clone()),
@@ -99,7 +99,7 @@ impl IntoSEvent for OneMessageType {
                         guild: None,
                         member: None,
                         user: Some(user.clone()),
-                        created_at: Some(one_event.time),
+                        created_at: Some(time),
                         updated_at: None,
                     }),
                     operator: Some(user.clone()),
